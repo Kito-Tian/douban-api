@@ -1,0 +1,310 @@
+<body style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial, Noto Sans, Liberation Sans, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji; background-color: #f9f9f9; margin: 0; padding: 0; transition: background-color 0.3s ease;">
+  <div class="enable-highlight"></div>
+  <div id="loading" class="loading" style="display: flex; justify-content: center; height: 100vh;">
+    <svg width="50" height="50" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="25" cy="25" r="20" stroke="#3377AA" stroke-width="5" fill="none" stroke-dasharray="125.6" stroke-dashoffset="125.6">
+        <animate attributeName="stroke-dashoffset" from="125.6" to="0" dur="1.5s" repeatCount="indefinite" />
+        <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1.5s" repeatCount="indefinite" />
+      </circle>
+    </svg>
+  </div>
+  <div id="app" class="movie-list" style="max-width: 800px; margin: 20px auto; display: none;"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const app = document.getElementById('app');
+      const loadingElement = document.getElementById('loading');
+      const highlightElement = document.querySelector('.enable-highlight');
+      const movies = [];
+      let isMobile = window.innerWidth < 768;
+
+      const updateCardStyles = () => {
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        const cards = document.querySelectorAll('.movie-card');
+        cards.forEach(card => {
+          card.style.backgroundColor = isDarkMode ? '#333' : '#fff';
+          const title = card.querySelector('.movie-title');
+          if (title) {
+            title.style.backgroundColor = isDarkMode ? '#444' : '#F2F4F6';
+            title.style.color = isDarkMode ? '#fff' : '#3377AA';
+          }
+          const infoText = card.querySelector('.movie-info-text');
+          if (infoText) {
+            infoText.style.color = isDarkMode ? '#fff' : '#666';
+          }
+          const rating = card.querySelector('.movie-rating');
+          if (rating) {
+            rating.style.color = isDarkMode ? '#fff' : '#666';
+            const ratingDate = rating.querySelector('.rating-date');
+            if (ratingDate) {
+              ratingDate.style.color = isDarkMode ? '#fff' : '#666';
+            }
+          }
+          const comment = card.querySelector('.movie-comment');
+          if (comment) {
+            comment.style.backgroundColor = isDarkMode ? '#444' : '#F5F8FE';
+            comment.style.color = isDarkMode ? '#fff' : '#444';
+          }
+        });
+      };
+
+      const toggleDarkMode = () => {
+        if (highlightElement.getAttribute('data-color') === 'dark-color') {
+          document.body.style.backgroundColor = '#121212';
+          document.body.classList.add('dark-mode');
+        } else {
+          document.body.style.backgroundColor = '#f9f9f9';
+          document.body.classList.remove('dark-mode');
+        }
+        updateCardStyles();
+      };
+
+      toggleDarkMode();
+
+      const observer = new MutationObserver((mutationsList) => {
+        for (const mutation of mutationsList) {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'data-color') {
+            toggleDarkMode();
+          }
+        }
+      });
+
+      observer.observe(highlightElement, { attributes: true });
+
+      const openMovieDetail = (url) => {
+        if (url && url !== '#') {
+          window.open(url, '_blank');
+        }
+      };
+
+      const extractMovieInfo = (intro, isMobile = false) => {
+        const dateRegex = /\d{4}-\d{2}-\d{2}\([^)]+\)/g;
+        const releaseDates = intro.match(dateRegex) || [];
+
+        const durationRegex = /\d+分钟/;
+        const durationMatch = intro.match(durationRegex);
+        const duration = durationMatch ? durationMatch[0] : null;
+
+        if (isMobile) {
+          const year = releaseDates.length > 0 ? releaseDates[0].substring(0, 4) + '年上映' : '';
+          return `${year}${duration ? ' / ' + duration : ''}`;
+        }
+
+        let info = releaseDates.join(' / ');
+        if (duration) {
+          info += ` / ${duration}`;
+        }
+
+        return info;
+      };
+
+      const extractMainTitle = (title) => {
+        const index = title.indexOf('/');
+        return index !== -1 ? title.substring(0, index).trim() : title;
+      };
+
+      const checkIsMobile = () => {
+        isMobile = window.innerWidth < 768;
+      };
+
+      window.addEventListener('resize', checkIsMobile);
+
+      try {
+        const response = await fetch('https://api.allorigins.win/get?url=https://movie.douban.com/people/178287633/collect');
+        const data = await response.json();
+        const htmlContent = data.contents;
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlContent, 'text/html');
+        const items = doc.querySelectorAll('.comment-item');
+
+        items.forEach(item => {
+          const rawTitle = item.querySelector('.title em')?.textContent.trim() || '未知电影';
+          const title = rawTitle;
+          const mainTitle = extractMainTitle(title);
+          const cover = item.querySelector('.pic img')?.src || '';
+          const ratingElement = item.querySelector('.rating1-t, .rating2-t, .rating3-t, .rating4-t, .rating5-t');
+          const rating = ratingElement ? ratingElement.className.replace('rating', '').replace('-t', '') : '无评分';
+          const comment = item.querySelector('.comment')?.textContent.trim() || '无评价';
+          const detailUrl = item.querySelector('.title a')?.href || '#';
+          const intro = item.querySelector('.intro')?.textContent.trim() || '';
+          const commentDate = item.querySelector('.date')?.textContent.trim() || '';
+
+          const movieInfo = extractMovieInfo(intro);
+
+          const proxiedCover = cover ? `https://images.weserv.nl/?url=${encodeURIComponent(cover)}` : '';
+
+          movies.push({
+            title,
+            mainTitle,
+            cover: proxiedCover,
+            rating,
+            comment,
+            detailUrl,
+            movieInfo,
+            commentDate,
+          });
+        });
+
+        renderMovies();
+      } catch (error) {
+        console.error('Error fetching movies:', error);
+      } finally {
+        loadingElement.style.display = 'none';
+        app.style.display = 'block';
+      }
+
+      function renderMovies() {
+        app.innerHTML = '';
+        movies.forEach(movie => {
+          const movieCard = document.createElement('div');
+          movieCard.classList.add('movie-card');
+          movieCard.style.display = 'flex';
+          movieCard.style.borderRadius = '4px';
+          movieCard.style.boxShadow = 'rgba(0, 0, 0, 0.05) 0px 0px 0px 1px';
+          movieCard.style.marginBottom = '20px';
+          movieCard.style.overflow = 'hidden';
+          movieCard.style.width = '100%';
+          movieCard.style.transition = 'background-color 0.3s ease';
+          movieCard.style.backgroundColor = document.body.classList.contains('dark-mode') ? '#333' : '#fff';
+
+          const movieCoverWrapper = document.createElement('div');
+          movieCoverWrapper.classList.add('movie-cover-wrapper');
+          movieCoverWrapper.style.width = isMobile ? '25%' : '18%';
+          movieCoverWrapper.style.height = isMobile ? '150px' : '200px';
+          movieCoverWrapper.style.display = 'flex';
+          movieCoverWrapper.style.backgroundColor = '#f0f0f0';
+          movieCoverWrapper.style.transition = 'background-color 0.3s ease';
+          movieCoverWrapper.onclick = () => openMovieDetail(movie.detailUrl);
+
+          const movieCover = document.createElement('img');
+          movieCover.src = movie.cover;
+          movieCover.alt = movie.title;
+          movieCover.classList.add('movie-cover');
+          movieCover.style.width = '100%';
+          movieCover.style.height = '100%';
+          movieCover.style.objectFit = 'cover';
+          movieCover.style.borderRadius = '4px';
+
+          movieCoverWrapper.appendChild(movieCover);
+          movieCard.appendChild(movieCoverWrapper);
+
+          const movieInfoDiv = document.createElement('div');
+          movieInfoDiv.classList.add('movie-info');
+          movieInfoDiv.style.flex = '1';
+          movieInfoDiv.style.padding = '0 0 10px 10px';
+          movieInfoDiv.style.display = 'flex';
+          movieInfoDiv.style.flexDirection = 'column';
+          movieInfoDiv.style.justifyContent = 'space-between';
+          movieInfoDiv.style.transition = 'background-color 0.3s ease';
+
+          const movieTitle = document.createElement('div');
+          movieTitle.classList.add('movie-title');
+          movieTitle.style.marginBottom = '10px';
+          movieTitle.style.padding = '5px';
+          movieTitle.style.fontSize = '15px';
+          movieTitle.style.color = document.body.classList.contains('dark-mode') ? '#fff' : '#3377AA';
+          movieTitle.style.borderRadius = '4px';
+          movieTitle.style.textAlign = 'start';
+          movieTitle.style.backgroundColor = document.body.classList.contains('dark-mode') ? '#444' : '#F2F4F6';
+          movieTitle.style.transition = 'background-color 0.15s ease, color 0.15s ease';
+
+          const movieTitleSpan = document.createElement('span');
+          movieTitleSpan.textContent = isMobile ? movie.mainTitle : movie.title;
+          movieTitleSpan.style.cursor = 'pointer';
+          movieTitleSpan.style.transition = 'background-color 0.15s ease, color 0.15s ease';
+
+          movieTitleSpan.addEventListener('mouseenter', () => {
+            if (!document.body.classList.contains('dark-mode')) {
+              movieTitleSpan.style.backgroundColor = '#3377AA';
+              movieTitleSpan.style.color = '#fff';
+            }
+          });
+
+          movieTitleSpan.addEventListener('mouseleave', () => {
+            if (!document.body.classList.contains('dark-mode')) {
+              movieTitleSpan.style.backgroundColor = '#F2F4F6';
+              movieTitleSpan.style.color = '#3377AA';
+            }
+          });
+
+          movieTitleSpan.onclick = () => openMovieDetail(movie.detailUrl);
+          movieTitle.appendChild(movieTitleSpan);
+          movieInfoDiv.appendChild(movieTitle);
+
+          if (movie.movieInfo) {
+            const movieInfoText = document.createElement('div');
+            movieInfoText.classList.add('movie-info-text');
+            movieInfoText.style.margin = '0 0 6px';
+            movieInfoText.style.fontSize = isMobile ? '12px' : '13px';
+            movieInfoText.style.color = document.body.classList.contains('dark-mode') ? '#fff' : '#666';
+            movieInfoText.style.textAlign = 'start';
+            movieInfoText.style.transition = 'color 0.3s ease';
+            movieInfoText.textContent = isMobile ? extractMovieInfo(movie.movieInfo, true) : movie.movieInfo;
+            movieInfoDiv.appendChild(movieInfoText);
+          }
+
+          const movieRating = document.createElement('div');
+          movieRating.classList.add('movie-rating');
+          movieRating.style.margin = '0 0 6px';
+          movieRating.style.fontSize = '15px';
+          movieRating.style.color = document.body.classList.contains('dark-mode') ? '#fff' : '#666';
+          movieRating.style.textAlign = 'start';
+          movieRating.style.display = 'flex';
+          movieRating.style.alignItems = 'center';
+          movieRating.style.gap = '6px';
+          movieRating.style.transition = 'color 0.3s ease';
+
+          if (movie.rating !== '无评分') {
+            const ratingIcon = document.createElement('span');
+            ratingIcon.classList.add('rating-icon');
+            ratingIcon.style.display = 'inline-block';
+            ratingIcon.style.width = '55px';
+            ratingIcon.style.height = '11px';
+            ratingIcon.style.backgroundImage = `url('https://www.yangzirui.cn/ic_rating_s.png')`;
+            ratingIcon.style.backgroundPositionY = `-${(5 - movie.rating) * 22}px`;
+
+            movieRating.appendChild(ratingIcon);
+          } else {
+            const ratingText = document.createElement('span');
+            ratingText.textContent = '无评分';
+            movieRating.appendChild(ratingText);
+          }
+
+          if (movie.commentDate) {
+            const ratingDate = document.createElement('span');
+            ratingDate.classList.add('rating-date');
+            ratingDate.style.fontSize = '13px';
+            ratingDate.style.color = document.body.classList.contains('dark-mode') ? '#fff' : '#666';
+            ratingDate.style.transition = 'color 0.3s ease';
+            ratingDate.textContent = movie.commentDate;
+            movieRating.appendChild(ratingDate);
+          }
+
+          movieInfoDiv.appendChild(movieRating);
+
+          const movieComment = document.createElement('div');
+          movieComment.classList.add('movie-comment');
+          movieComment.style.margin = '0 10px 0 0';
+          movieComment.style.fontSize = isMobile ? '13px' : '15px';
+          movieComment.style.color = document.body.classList.contains('dark-mode') ? '#fff' : '#444';
+          movieComment.style.lineHeight = isMobile ? '1.5' : '1';
+          movieComment.style.textAlign = 'start';
+          movieComment.style.borderLeft = '#4870AC solid 2px';
+          movieComment.style.backgroundColor = document.body.classList.contains('dark-mode') ? '#444' : '#F5F8FE';
+          movieComment.style.padding = '10px';
+          movieComment.style.transition = 'background-color 0.3s ease, color 0.3s ease';
+
+          const movieCommentSpan = document.createElement('span');
+          movieCommentSpan.textContent = movie.comment;
+
+          movieComment.appendChild(movieCommentSpan);
+          movieInfoDiv.appendChild(movieComment);
+
+          movieCard.appendChild(movieInfoDiv);
+          app.appendChild(movieCard);
+        });
+      }
+    });
+  </script>
+</body>
