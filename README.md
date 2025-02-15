@@ -6,7 +6,7 @@
 
 ## 效果预览
 
-在线预览：[观影日记 - Kito's Blog](https://www.yangzirui.cn/movie.html)
+在线预览：[📽️ 影单 - Kito's Blog](https://blog.yangzirui.cn/movie.html)
 
 截图预览：
 
